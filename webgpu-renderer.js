@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+import { WebGPUBlur } from './webgpu-blur.js';
+
 function getTextureFormat(directOutput) {
   return directOutput ? navigator.gpu.getPreferredCanvasFormat() : 'rgba8unorm';
 }
@@ -43,6 +45,7 @@ async function renderWithWebGPU(params, videoFrame, resourceCache) {
   const width = params.webgpuCanvas.width;
   const height = params.webgpuCanvas.height;
   const segmenter = params.segmenter;
+  const blurrer = params.blurrer;
 
   // Import external texture.
   let sourceTexture;
@@ -148,48 +151,15 @@ async function renderWithWebGPU(params, videoFrame, resourceCache) {
     });
   }
 
+  const canvasTexture = params.context.getCurrentTexture();
   const outputTexture = getOrCreateTexture(device, resourceCache, 'outputTexture',
     [width, height, 1],
     params.directOutput,
     GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING);
 
-  // Update uniform buffer
-  const uniformData = new Float32Array([width, height, 6.0]); // resolution, blurAmount
-  device.queue.writeBuffer(params.uniformBuffer, 0, uniformData);
-
-  // Create bind group
-  const canvasTexture = params.context.getCurrentTexture();
-  const bindGroup = device.createBindGroup({
-    layout: params.computePipeline.getBindGroupLayout(0),
-    label: "blurBindGroup",
-    entries: [
-      {
-        binding: 0, resource: params.zeroCopy ? sourceTexture : sourceTexture.createView()
-      },
-      {
-        binding: 1,
-        resource: maskTexture.createView(),
-      },
-      {
-        binding: 2,
-        resource: params.directOutput ? canvasTexture.createView() : outputTexture.createView(),
-        // resource: outputTexture.createView(),
-      },
-      { binding: 3, resource: params.blurSampler },
-      { binding: 4, resource: { buffer: params.uniformBuffer } },
-    ],
-  });
-
-  // Run compute shader
   const commandEncoder = device.createCommandEncoder();
-  const computePass = commandEncoder.beginComputePass();
-  computePass.setPipeline(params.computePipeline);
-  computePass.setBindGroup(0, bindGroup);
-
-  const workgroupCountX = Math.ceil(width / 8);
-  const workgroupCountY = Math.ceil(height / 8);
-  computePass.dispatchWorkgroups(workgroupCountX, workgroupCountY);
-  computePass.end();
+  blurrer.setInputDimensions(processingWidth, processingHeight);
+  blurrer.blur(commandEncoder, sourceTexture, maskTexture, params.directOutput ? canvasTexture : outputTexture, 360);
 
   if (!params.directOutput) {
     const renderPipeline = getOrCreateResource(resourceCache, `renderPipeline_${width}x${height}`, () =>
@@ -313,87 +283,8 @@ export async function createWebGPUBlurRenderer(segmenter, zeroCopy, directOutput
     minFilter: 'linear',
   });
 
-  // WebGPU compute shader for blur effect
-  const computeShaderCode = `
-      @group(0) @binding(0) var inputTexture: ${zeroCopy ? "texture_external" : "texture_2d<f32>"};
-      @group(0) @binding(1) var maskTexture: texture_2d<f32>;
-      @group(0) @binding(2) var outputTexture: texture_storage_2d<${getTextureFormat(directOutput)}, write>;
-      @group(0) @binding(3) var textureSampler: sampler;
-      
-      struct Uniforms {
-        resolution: vec2<f32>,
-        blurAmount: f32,
-      };
-      @group(0) @binding(4) var<uniform> uniforms: Uniforms;
-      
-      @compute @workgroup_size(8, 8)
-      fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-        let inputDims = textureDimensions(inputTexture);
-        let maskDims = textureDimensions(maskTexture);
-        
-        if (global_id.x >= inputDims.x || global_id.y >= inputDims.y) {
-          return;
-        }
-        
-        let coord = vec2<i32>(i32(global_id.x), i32(global_id.y));
-        let uv = (vec2<f32>(coord) + 0.5) / vec2<f32>(inputDims);
-        
-        let originalColor = textureSampleBaseClampToEdge(inputTexture, textureSampler, uv);
-        
-        // Calculate corresponding mask coordinate (handle different dimensions)
-        let maskCoord = vec2<i32>(
-          i32(uv.x * f32(maskDims.x)),
-          i32(uv.y * f32(maskDims.y))
-        );
-        let mask = textureLoad(maskTexture, maskCoord, 0).${directOutput ? "b" : "r"};
-        
-        // Calculate blurred color for the background
-        var blurredColor = vec4<f32>(0.0);
-        var totalWeight = 0.0;
-        
-        // Use 9x9 kernel like WebGL2 (from -4 to +4)
-        for (var x = -4; x <= 4; x++) {
-          for (var y = -4; y <= 4; y++) {
-            let offset = vec2<f32>(f32(x), f32(y)) * uniforms.blurAmount / uniforms.resolution;
-            let weight = 1.0 / (1.0 + length(vec2<f32>(f32(x), f32(y))));
-            blurredColor += textureSampleBaseClampToEdge(inputTexture, textureSampler, uv + offset) * weight;
-            totalWeight += weight;
-          }
-        }
-        if (totalWeight > 0.0) {
-            blurredColor /= totalWeight;
-        }
-        
-        // Mix original and blurred colors based on the mask.
-        let finalColor = mix(blurredColor, originalColor, mask);
-        
-        textureStore(outputTexture, coord, finalColor);
-      }
-    `;
-
-  const computeShader = device.createShaderModule({
-    code: computeShaderCode,
-  });
-
-  const computePipeline = device.createComputePipeline({
-    layout: 'auto',
-    compute: {
-      module: computeShader,
-      entryPoint: 'main',
-    },
-  });
-
-  const blurSampler = device.createSampler({
-    magFilter: 'linear',
-    minFilter: 'linear',
-  });
-
-  const uniformBuffer = device.createBuffer({
-    // resolution: vec2<f32>, blurAmount: f32.
-    // vec2 is 8 bytes, f32 is 4. Total 12. Pad to 16 for alignment.
-    size: 16,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
+  const blurrer = new WebGPUBlur(device, zeroCopy, directOutput);
+  await blurrer.init();
 
   // Create a simple render pipeline to copy the compute shader's output (RGBA)
   // to the canvas, which might have a different format (e.g., BGRA).
@@ -448,10 +339,7 @@ export async function createWebGPUBlurRenderer(segmenter, zeroCopy, directOutput
       const params = {
         device,
         context,
-        computePipeline,
         webgpuCanvas,
-        blurSampler,
-        uniformBuffer,
         outputRendererVertexShader,
         getOutputRendererFragmentShader,
         segmentationWidth,
@@ -461,7 +349,8 @@ export async function createWebGPUBlurRenderer(segmenter, zeroCopy, directOutput
         renderSampler,
         zeroCopy,
         directOutput,
-        segmenter
+        segmenter,
+        blurrer
       };
       try {
         return await renderWithWebGPU(params, videoFrame, resourceCache);
