@@ -151,7 +151,7 @@ async function processFrames(readable, writable, onFpsUpdate) {
 
 async function runInWorker(trackProcessor, trackGenerator) {
   return new Promise((resolve) => {
-    const worker = new Worker('blur-worker.js');
+    const worker = new Worker('blur-worker.js', { type: 'module' });
     appWorker = worker; // Store worker instance for termination
 
     const onFpsUpdate = (fps) => {

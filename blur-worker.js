@@ -11,55 +11,77 @@ let segmenter = null;
 
 // Import scripts that are also needed in the worker.
 // These scripts must not access `document` or `window`.
-self.importScripts('webgl-renderer.js', 'webgpu-renderer.js', 'triangle-fake-segmenter.js');
+import { createWebGL2BlurRenderer } from './webgl-renderer.js';
+import { createWebGPUBlurRenderer } from './webgpu-renderer.js';
+import { TriangleFakeSegmenter } from './blur4/triangle-fake-segmenter.js';
+import { WebNNSegmenter } from './blur4/webnn-segmenter.js';
 
 // Since the worker can't access the main thread's 'bodySegmentation' object directly,
 // we need to load the scripts that provide it.
-async function initializeSegmenter() {
-  self.importScripts(
-    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core/dist/tf-core.js',
-    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter/dist/tf-converter.js',
-    'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu/dist/tf-backend-cpu.js',
-    'https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation/dist/body-segmentation.js',
-    'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js'
-  );
-
+async function initializeSegmenter(segmenterType) {
   try {
-    segmenter = await bodySegmentation.createSegmenter(
-      bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation, {
-      runtime: 'mediapipe',
-      modelType: 'landscape',
-      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+    switch (segmenterType) {
+      case 'triangle':
+        segmenter = new TriangleFakeSegmenter();
+        console.log('Worker: Using Triangle Fake Segmenter');
+        break;
+      case 'mediapipe':
+        // Dynamically import the necessary scripts for MediaPipe.
+        // These scripts register themselves on the global `self` scope.
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core/dist/tf-core.js');
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter/dist/tf-converter.js');
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu/dist/tf-backend-cpu.js');
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation/dist/body-segmentation.js');
+        await import('https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js');
+
+        segmenter = await self.bodySegmentation.createSegmenter(
+          self.bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation, {
+            runtime: 'mediapipe',
+            modelType: 'landscape',
+            solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+          }
+        );
+        console.log('Worker: Using CPU (MediaPipe) for segmentation');
+        break;
+      case 'webnn-gpu':
+        segmenter = new WebNNSegmenter('gpu');
+        console.log('Worker: Using WebNN GPU for segmentation');
+        break;
+      case 'webnn-npu':
+        segmenter = new WebNNSegmenter('npu');
+        console.log('Worker: Using WebNN NPU for segmentation');
+        break;
+      default:
+        throw new Error(`Unknown segmenter in worker: ${segmenterType}`);
     }
-    );
-    console.log('Worker: Using CPU (MediaPipe) for segmentation');
   } catch (error) {
-    console.error('Worker: Failed to initialize CPU segmentation:', error);
+    console.error('Worker: Failed to initialize segmenter:', error);
     throw error; // Propagate error to the main thread
   }
 }
 
-async function segmentMediapipe(downscaledImageData) {
+async function segmenterFunction(downscaledImageData) {
   if (!segmenter) return null;
   const segmentation = await segmenter.segmentPeople(downscaledImageData);
   if (!segmentation || segmentation.length === 0) {
     return null;
   }
-  return await segmentation[0].mask.toImageData();
+  if (segmentation instanceof ImageData) {
+    return segmentation;
+  }
+  return await segmentation[0]?.mask.toImageData();
 }
 
 async function initializeBlurRenderer(options) {
-  const { useWebGPU, useFakeSegmentation, zeroCopy, directOutput } = options;
-  const segmenterFunction = useFakeSegmentation ? createBlurryTriangleMask : segmentMediapipe;
-
-  if (!useFakeSegmentation && !segmenter) {
-    await initializeSegmenter();
-  }
+  const { useWebGPU, segmenterType, zeroCopy, directOutput } = options;
+  await initializeSegmenter(segmenterType);
 
   try {
-    if (useWebGPU && self.createWebGPUBlurRenderer) {
+    if (useWebGPU && 'gpu' in self.navigator) {
+      console.log('Instantiate WebGPU renderer')
       appBlurRenderer = await createWebGPUBlurRenderer(segmenterFunction, zeroCopy, directOutput);
     } else {
+      console.log('Instantiate WebGL renderer')
       appBlurRenderer = await createWebGL2BlurRenderer(segmenterFunction);
     }
   } catch (error) {
