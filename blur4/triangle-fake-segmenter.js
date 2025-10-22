@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export class TriangleFakeSegmenter {
-  async segmentPeople(inputImageData) {
+  async segment(inputImageData) {
     function sub(v1, v2) {
       return { x: v1.x - v2.x, y: v1.y - v2.y };
     }
