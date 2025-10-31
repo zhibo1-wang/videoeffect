@@ -53,7 +53,9 @@ async function initializeBlurRenderer(webGpuDevice) {
     if (webGpuDevice) {
       const zeroCopy = zeroCopyCheckbox.checked;
       const directOutput = directOutputCheckbox.checked;
-      appBlurRenderer = await createWebGPUBlurRenderer(webGpuDevice, segmenter, zeroCopy, directOutput);
+      const zeroCopyTensor = webnnZeroCopyCheckbox.checked;
+      const useWebNN = webnnRadio.checked;
+      appBlurRenderer = await createWebGPUBlurRenderer(webGpuDevice, segmenter, zeroCopy, directOutput, useWebNN, zeroCopyTensor);
       appStatus.innerText = 'Renderer: WebGPU';
       console.log('Using WebGPU for blur rendering');
     } else {
@@ -211,6 +213,8 @@ const zeroCopyCheckbox = document.getElementById('zeroCopy');
 const zeroCopyLabel = document.getElementById('zeroCopyLabel');
 const directOutputCheckbox = document.getElementById('directOutput');
 const directOutputLabel = document.getElementById('directOutputLabel');
+const webnnRadio = document.getElementById('segmenter-webnn');
+const webnnZeroCopyCheckbox = document.getElementById('webnnZeroCopy');
 const webrtcSink = document.getElementById('webrtcSink');
 const webrtcCodec = document.getElementById('webrtcCodec');
 const webrtcCodecLabel = document.getElementById('webrtcCodecLabel');

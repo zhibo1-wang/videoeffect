@@ -5,13 +5,15 @@
 import { WebGPUBlur } from './webgpu-blur.js';
 
 class WebGPURenderer {
-  constructor(device, segmenter, blurrer, { zeroCopy, directOutput }) {
+  constructor(device, segmenter, blurrer, { zeroCopy, directOutput }, {useWebNN, zeroCopyTensor}) {
     console.log("createWebGPUBlurRenderer", { zeroCopy, directOutput });
     this.device = device;
     this.segmenter = segmenter;
     this.blurrer = blurrer;
     this.zeroCopy = zeroCopy;
     this.directOutput = directOutput;
+    this.useWebNN = useWebNN;
+    this.zeroCopyTensor = zeroCopyTensor;
 
     // Always use full resolution for processing, regardless of display size
     this.webgpuCanvas = new OffscreenCanvas(1280, 720);
@@ -31,7 +33,7 @@ class WebGPURenderer {
     this.segmentationHeight = 144;
     this.downscaledImageData = new ImageData(this.segmentationWidth, this.segmentationHeight);
     let downscaleShaderUrl;
-    if (this.segmenter.segmentGPUBuffer && this.segmenter.deviceType === 'gpu') {
+    if (this.useWebNN && this.zeroCopyTensor) {
       downscaleShaderUrl = 'blur4/shaders/downscale-and-convert-to-rgb16float.wgsl';
     } else {
       downscaleShaderUrl = 'blur4/shaders/downscale-and-convert-to-rgba8unorm.wgsl';
@@ -101,15 +103,14 @@ class WebGPURenderer {
   }
 
   async segment(sourceTexture) {
-    const useInterop = this.segmenter.segmentGPUBuffer && this.segmenter.deviceType === 'gpu';
-
+    const useInterop = this.useWebNN && this.zeroCopyTensor;
     let destTexture;
     if (useInterop) {
       destTexture = { buffer: await this.segmenter.getInputBuffer(this.device) };
     } else {
       destTexture = this.getOrCreateTexture('downscaleDest', {
         size: [this.segmentationWidth, this.segmentationHeight, 1],
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
         format: 'rgba8unorm',
       });
     }
@@ -313,9 +314,9 @@ export async function getWebGPUDevice() {
 }
 
 // WebGPU blur renderer
-export async function createWebGPUBlurRenderer(device, segmenter, zeroCopy, directOutput) {
+export async function createWebGPUBlurRenderer(device, segmenter, zeroCopy, directOutput, useWebNN, zeroCopyTensor) {
   const blurrer = new WebGPUBlur(device, zeroCopy, directOutput);
   await blurrer.init();
 
-  return new WebGPURenderer(device, segmenter, blurrer, { zeroCopy, directOutput });
+  return new WebGPURenderer(device, segmenter, blurrer, { zeroCopy, directOutput }, {useWebNN, zeroCopyTensor});
 }
