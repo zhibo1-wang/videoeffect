@@ -23,29 +23,26 @@ let rendererSwitchRequested = false;
 async function initializeSegmenter(webGpuDevice) {
   try {
     const segmenterType = document.querySelector('input[name="segmenter"]:checked').value;
-    switch (segmenterType) {
-      case 'triangle':
-        segmenter = new TriangleFakeSegmenter();
-        console.log('Using Triangle Fake Segmenter');
-        break;
-      case 'mediapipe':
-        // CPU-based segmentation using MediaPipe
-        segmenter = new MediaPipeSegmenter();
-        console.log('Using CPU (MediaPipe) for segmentation');
-        break;
-      case 'webnn-gpu':
-        segmenter = new WebNNSegmenter({ deviceType: 'gpu', webGpuDevice });
-        console.log('Using WebNN GPU for segmentation');
-        break;
-      case 'webnn-npu':
-        segmenter = new WebNNSegmenter({ deviceType: 'npu' });
-        console.log('Using WebNN NPU for segmentation');
-        break;
-      default:
-        throw new Error(`Unknown segmenter: ${segmenterType}`);
+    if (segmenterType === 'webnn') {
+      const deviceType = document.querySelector('input[name="webnnDevice"]:checked').value;
+      segmenter = new WebNNSegmenter({ deviceType, webGpuDevice });
+      console.log(`Using WebNN with device type: ${deviceType}`);
+    } else {
+      switch (segmenterType) {
+        case 'triangle':
+          segmenter = new TriangleFakeSegmenter();
+          console.log('Using Triangle Fake Segmenter');
+          break;
+        case 'mediapipe':
+          segmenter = new MediaPipeSegmenter();
+          console.log('Using CPU (MediaPipe) for segmentation');
+          break;
+        default:
+          throw new Error(`Unknown segmenter: ${segmenterType}`);
+      }
     }
   } catch (error) {
-    console.error('Failed to initialize CPU segmentation:', error);
+    console.error('Failed to initialize segmentation:', error);
     appStatus.innerText = 'Segmentation initialization failed';
   }
 }

@@ -72,11 +72,18 @@
           <input type="radio" name="segmenter" value="mediapipe" id="segmenter-mediapipe" checked/> MediaPipe (CPU)
         </label>
         <label>
-          <input type="radio" name="segmenter" value="webnn-gpu" id="segmenter-webnn-gpu"/> WebNN (GPU)
+          <input type="radio" name="segmenter" value="webnn" id="segmenter-webnn"/> WebNN
         </label>
-        <label>
-          <input type="radio" name="segmenter" value="webnn-npu" id="segmenter-webnn-npu"/> WebNN (NPU)
-        </label>
+        <div id="webnn-options" style="padding-left: 20px;">
+          <label>
+            Device:
+            <input type="radio" name="webnnDevice" value="gpu" id="webnn-device-gpu" checked/> GPU
+            <input type="radio" name="webnnDevice" value="npu" id="webnn-device-npu"/> NPU
+          </label>
+          <label>
+            <input type="checkbox" id="webnn-zero-copy" name="webnnZeroCopy" value="true"/> Zero-copy tensor
+          </label>
+        </div>
       </div>
       <div>
         <h4>Options</h4>
