@@ -5,24 +5,24 @@
 import { SelfieSegmentationLandscape } from "./selfie-segmentation-landscape.js";
 
 export class WebNNSegmenter {
-  constructor(deviceType, layout = 'nhwc') {
+  constructor({ deviceType, layout = 'nhwc', webGpuDevice = null }) {
     this.deviceType = deviceType;
     this.layout = layout;
+    this.webGpuDevice = webGpuDevice;
     this.selfieSegmentation = new SelfieSegmentationLandscape({
       deviceType,
       dataType: 'float16',
       layout,
       weightsUrlPrefix: 'blur4/',
     });
-    this.built = false;
+    console.log('Compiling WebNN SelfieSegmentation model for', deviceType, 'with layout', layout);
+    this.built = this.selfieSegmentation.load({ webGpuDevice })
+      .then(graph => this.selfieSegmentation.build(graph))
+      .then(() => console.log('Compiled WebNN SelfieSegmentation model'));
   }
 
-  async segmentPeople(imageData) {
-    if (!this.built) {
-      const graph = await this.selfieSegmentation.load({ deviceType: this.deviceType })
-      await this.selfieSegmentation.build(graph);
-      this.built = true;
-    }
+  async segment(imageData) {
+    await this.built;
     const { data, width, height } = imageData;
     const pixels = width * height;
     const inputArray = new Float16Array(pixels * 3);
@@ -49,5 +49,23 @@ export class WebNNSegmenter {
       dst[i] = dst[i + 1] = dst[i + 2] = dst[i + 3] = Math.round(v);
     }
     return img;
+  }
+
+  async getInputBuffer(device) {
+    console.assert(this.webGpuDevice !== null);
+    await this.built;
+    return this.selfieSegmentation.getInputBuffer();
+  }
+
+  async getOutputBuffer(device) {
+    console.assert(this.webGpuDevice !== null);
+    await this.built;
+    return this.selfieSegmentation.getOutputBuffer();
+  }
+
+  async segmentGPUBuffer() {
+    console.assert(this.webGpuDevice !== null);
+    await this.built;
+    await this.selfieSegmentation.compute();
   }
 }

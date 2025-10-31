@@ -32,7 +32,7 @@ function createShader(gl, type, source) {
 }
 
 // WebGL2 blur renderer
-export async function createWebGL2BlurRenderer(segmenterFunction) {
+export async function createWebGL2BlurRenderer(segmenter) {
     // Create a separate canvas for WebGL2 processing at full resolution
     const webglCanvas = new OffscreenCanvas(1280, 720);
     // Always use full video resolution for processing, regardless of display size
@@ -129,7 +129,7 @@ export async function createWebGL2BlurRenderer(segmenterFunction) {
         const downscaledImageData = new ImageData(pixelData, segmentationWidth, segmentationHeight);
 
         // Segment
-        const maskImageData = await segmenterFunction(downscaledImageData);
+        const maskImageData = await segmenter.segment(downscaledImageData);
 
         // Upload mask texture
         gl.bindTexture(gl.TEXTURE_2D, maskTexture);
