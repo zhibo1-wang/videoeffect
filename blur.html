@@ -14,9 +14,6 @@
   <style>
     video,
     canvas {
-      position: absolute;
-      top: 20;
-      left: 0;
       transform: scaleX(-1);
     }
 
@@ -28,6 +25,59 @@
       font: 1em sans-serif;
       display: block;
       margin-bottom: 10px;
+    }
+
+    #settings-form {
+      position: fixed;
+      right: 0;
+      top: 20px;
+      width: 450px;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+      background: #fff;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+      transition: transform 0.28s ease, opacity 0.2s ease;
+      z-index: 1000;
+      transform: translateX(0);
+      padding: 16px;
+      border-radius: 8px 0 0 8px;
+    }
+
+    #settings-form.hidden {
+      transform: translateX(100%);
+    }
+
+    #settings-form>div,
+    #settings-form h3,
+    #settings-form h4 {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    #floatBtn {
+      position: fixed;
+      right: 20px;
+      top: 20px;
+      z-index: 1100;
+      background: #4caf50;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      font-size: 22px;
+      display: block;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+
+    #floatBtn.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
     }
   </style>
 </head>
@@ -41,28 +91,31 @@
       </div>
     </div>
   </div>
-  <form id = "settings-form" style="margin-top: 340px;">
+
+  <form id="settings-form">
     <div id="status" style="font: 1em sans-serif">Select renderer and click Start to begin video processing</div>
     <div id="fpsDisplay" style="font: 1em sans-serif; margin-top: 5px; color: #666;">FPS: --</div>
-    <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9; width: 600px;">
+
+    <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
       <h3 style="margin-top: 0;">Renderer Selection</h3>
       <div>
-      <label>
-        <input type="radio" name="renderer" value="webgl2" checked /> WebGL2 (Compatible)
-      </label>
-      <label>
-        <input type="radio" name="renderer" value="webgpu" id="webgpuRadio" /> WebGPU (Advanced, requires compatible browser)
-      </label>
-      <label style="padding-left: 20px;" id="zeroCopyLabel">
-        <input type="checkbox" id="zeroCopy" name="zeroCopy" unchecked /> Zero-copy import
-      </label>
-      <label style="padding-left: 20px;" id="directOutputLabel">
-        <input type="checkbox" id="directOutput" name="directOutput" unchecked /> Zero-copy output
-      </label>
-      <label>
-        <input type="checkbox" id="useWorker" name="useWorker" value="true" /> Use Worker for processing
-      </label>
+        <label>
+          <input type="radio" name="renderer" value="webgl2" checked /> WebGL2 (Compatible)
+        </label>
+        <label>
+          <input type="radio" name="renderer" value="webgpu" id="webgpuRadio" /> WebGPU (Advanced, requires compatible browser)
+        </label>
+        <label style="padding-left: 20px;" id="zeroCopyLabel">
+          <input type="checkbox" id="zeroCopy" name="zeroCopy" /> Zero-copy import
+        </label>
+        <label style="padding-left: 20px;" id="directOutputLabel">
+          <input type="checkbox" id="directOutput" name="directOutput" /> Zero-copy output
+        </label>
+        <label>
+          <input type="checkbox" id="useWorker" name="useWorker" value="true" /> Use Worker for processing
+        </label>
       </div>
+
       <div>
         <h3>Selfie Segmentation Backend</h3>
         <label>
@@ -85,6 +138,7 @@
           </label>
         </div>
       </div>
+
       <div>
         <h4>Options</h4>
         <label>
@@ -95,16 +149,9 @@
           </select>
         </label>
       </div>
-      <div>
-      <button id="startButton" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
-        Start Video Processing
-      </button>
-      <button id="stopButton" style="padding: 10px 20px; font-size: 16px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px; display: none;">
-        Stop
-      </button>
-      </div>
     </div>
-    <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9; width: 600px;">
+
+    <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
       <h3 style="margin-top: 0;">Display Settings</h3>
       <label>
         Display Size:
@@ -114,7 +161,20 @@
         </select>
       </label>
     </div>
+
+    <div>
+      <button id="startButton" style="padding: 10px 20px; font-size: 16px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+        Start Video Processing
+      </button>
+      <button id="stopButton" style="padding: 10px 20px; font-size: 16px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; margin-left: 10px; display: none;">
+        Stop
+      </button>
+    </div>
   </form>
+
+  <button id="floatBtn" aria-label="Show settings" title="Show settings">☰</button>
+
+  <script src="menu.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-cpu"></script>
