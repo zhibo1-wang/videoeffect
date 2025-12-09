@@ -23,23 +23,22 @@ let rendererSwitchRequested = false;
 async function initializeSegmenter(webGpuDevice) {
   try {
     const segmenterType = document.querySelector('input[name="segmenter"]:checked').value;
-    if (segmenterType === 'webnn') {
-      const deviceType = document.querySelector('input[name="webnnDevice"]:checked').value;
-      segmenter = new WebNNSegmenter({ deviceType, webGpuDevice });
-      console.log(`Using WebNN with device type: ${deviceType}`);
-    } else {
-      switch (segmenterType) {
-        case 'triangle':
-          segmenter = new TriangleFakeSegmenter();
-          console.log('Using Triangle Fake Segmenter');
-          break;
-        case 'mediapipe':
-          segmenter = new MediaPipeSegmenter();
-          console.log('Using CPU (MediaPipe) for segmentation');
-          break;
-        default:
-          throw new Error(`Unknown segmenter: ${segmenterType}`);
-      }
+    switch (segmenterType) {
+      case 'webnn':
+        const deviceType = document.querySelector('input[name="webnnDevice"]:checked').value;
+        segmenter = new WebNNSegmenter({ deviceType, webGpuDevice });
+        console.log(`Using WebNN with device type: ${deviceType}`);
+        break;
+      case 'triangle':
+        segmenter = new TriangleFakeSegmenter();
+        console.log('Using Triangle Fake Segmenter');
+        break;
+      case 'mediapipe':
+        segmenter = new MediaPipeSegmenter();
+        console.log('Using CPU (MediaPipe) for segmentation');
+        break;
+      default:
+        throw new Error(`Unknown segmenter: ${segmenterType}`);
     }
   } catch (error) {
     console.error('Failed to initialize segmentation:', error);
@@ -177,7 +176,8 @@ async function run() {
     if (useWebGPU && 'gpu' in navigator) {
       webGpuDevice = await getWebGPUDevice();
     }
-    await initializeSegmenter(webGpuDevice);
+    const zeroCopyTensor = webnnZeroCopyCheckbox.checked;
+    await initializeSegmenter(zeroCopyTensor ? webGpuDevice : null);
     await initializeBlurRenderer(webGpuDevice);
     const onFpsUpdate = (fps) => { appFpsDisplay.textContent = `FPS: ${fps}`; };
     processFrames(trackProcessor.readable, trackGenerator.writable, onFpsUpdate).catch(e => {
@@ -384,7 +384,7 @@ async function initializeApp() {
     updateOptionState();
 
     // If the app is running, and a core pipeline option changed, restart the pipeline.
-    const restartNeededOptions = ['renderer', 'useWorker', 'segmenter', 'zeroCopy', 'directOutput'];
+    const restartNeededOptions = ['renderer', 'useWorker', 'segmenter', 'zeroCopy', 'directOutput', 'webnn-zero-copy'];
     if (isRunning && restartNeededOptions.includes(event.target.name)) {
       console.log(`Restarting pipeline due to change in '${event.target.name}'`);
       stopVideoProcessing();
